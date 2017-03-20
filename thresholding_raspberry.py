@@ -1,10 +1,17 @@
 from __future__ import print_function
+import RPi.GPIO as GPIO
 import numpy as np
 import argparse
 import cv2
 import math
 import time
 import heapq
+
+# setup GPIO
+GPIO.setmode(GPIO.BCM)
+GPIO.setwarnings(False)
+GPIO.setup(18, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+GPIO.setup(23, GPIO.OUT)
 
 # construct the argument parse and parse the arguments
 ap = argparse.ArgumentParser()
@@ -19,14 +26,17 @@ if not args.get("video", False):
 else:
 	camera = cv2.VideoCapture(args["video"])
 
-start_monitor = False
+BUTTON_PRESSED = False
 
 total_keys = 0
 
 # keep looping
 while True:
-	if cv2.waitKey(1) & 0xFF == ord("s"):
-		start_monitor = True
+	input_state = GPIO.input(18)
+	if input_state == False:
+		print("Button Pressed")
+		BUTTON_PRESSED = not BUTTON_PRESSED
+		time.sleep(0.1)
 
 	# grab the current frame
 	(grabbed, frame) = camera.read()
@@ -60,7 +70,7 @@ while True:
 
 	image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
 
-	if start_monitor:
+	if BUTTON_PRESSED:
 		colors = [(0,255,0),(255,0,0)] #,(0,0,255)
 		same_row_rects_colors = {}
 		same_row_rects = {}
@@ -92,15 +102,8 @@ while True:
 				if key_found == False:
 					same_row_rects[boxKey] = []
 					same_row_rects[boxKey].append(box)
-		
-		# iterate over two highest rows only
-		#same_row_rects_keys = list(same_row_rects.keys())
-		#two_lowest_keys = heapq.nsmallest(2, same_row_rects_keys)
-
-		#print(same_row_rects)
 
 		totals = []
-		#for idx, key in enumerate(two_lowest_keys):
 		same_row_rects_keys = list(same_row_rects.keys())
 		total_keys = len(same_row_rects_keys)
 		for idx, key in enumerate(sorted(same_row_rects_keys)):
@@ -112,25 +115,19 @@ while True:
 			x_totals = [np.sum(arr[:,0]) for arr in np_array]
 			totals.append(min(x_totals))
 
-		if len(totals) == 2 and math.fabs(totals[0]-totals[1]) < 50:
-                        print("PRESS BUTTON NOW")
+                print(totals)
+                if len(totals) > 2:
+                        totals = totals[0:2]
+                
+		if len(totals) == 2 and math.fabs(totals[0]-totals[1]) < 20:
+                        GPIO.output(23,GPIO.HIGH)
+                        print("PRESS NOW!")
 
 	# print("-----------------------------")
-
+        
 	cv2.imshow("Frame", frame)
-	time.sleep(0.001)
-
-	# detect faces in the image and then clone the frameso that we can draw on it
-	#faceRects = fd.detect(gray, scaleFactor = 1.1, minNeighbors = 5,
-	#	minSize = (30, 30))
-	#frameClone = frame.copy()
-
-	# loop over the face bounding boxes and draw them
-	#for (fX, fY, fW, fH) in faceRects:
-	#	cv2.rectangle(frameClone, (fX, fY), (fX + fW, fY + fH), (0, 255, 0), 2)
-
-	# show our detected faces
-	#cv2.imshow("Face", frameClone)
+	GPIO.output(23,GPIO.LOW)
+	time.sleep(0.01)
 
 	# if the 'q' key is pressed, stop the loop
 	if cv2.waitKey(1) & 0xFF == ord("q"):
